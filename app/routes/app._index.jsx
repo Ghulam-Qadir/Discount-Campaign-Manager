@@ -1,336 +1,284 @@
-import { useEffect } from "react";
-import { useFetcher } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
+import { useLoaderData, useOutletContext, Link } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import { getDashboardStats } from "../services/analytics.service";
+import StatCard from "../components/StatCard";
+import StatusBadge from "../components/StatusBadge";
+import DCMButton from "../components/DCMButton";
+import Icon from "../components/Icon";
+import { CAMPAIGN_TYPES } from "../utils/constants";
+import { formatCurrency, formatNumber, formatDate } from "../utils/format";
 
 export const loader = async ({ request }) => {
-  await authenticate.admin(request);
-
-  return null;
+  const { session } = await authenticate.admin(request);
+  return getDashboardStats(session.shop);
 };
 
-export const action = async ({ request }) => {
-  const { admin } = await authenticate.admin(request);
-  const color = ["Red", "Orange", "Yellow", "Green"][
-    Math.floor(Math.random() * 4)
-  ];
-  const response = await admin.graphql(
-    `#graphql
-      mutation populateProduct($product: ProductCreateInput!) {
-        productCreate(product: $product) {
-          product {
-            id
-            title
-            handle
-            status
-            variants(first: 10) {
-              edges {
-                node {
-                  id
-                  price
-                  barcode
-                  createdAt
-                }
-              }
-            }
-            demoInfo: metafield(namespace: "$app", key: "demo_info") {
-              jsonValue
-            }
-          }
-        }
-      }`,
-    {
-      variables: {
-        product: {
-          title: `${color} Snowboard`,
-          metafields: [
-            {
-              namespace: "$app",
-              key: "demo_info",
-              value: "Created by React Router Template",
-            },
-          ],
-        },
-      },
-    },
-  );
-  const responseJson = await response.json();
-  const product = responseJson.data.productCreate.product;
-  const variantId = product.variants.edges[0].node.id;
-  const variantResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyReactRouterTemplateUpdateVariant($productId: ID!, $variants: [ProductVariantsBulkInput!]!) {
-      productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-        productVariants {
-          id
-          price
-          barcode
-          createdAt
-        }
-      }
-    }`,
-    {
-      variables: {
-        productId: product.id,
-        variants: [{ id: variantId, price: "100.00" }],
-      },
-    },
-  );
-  const variantResponseJson = await variantResponse.json();
-  const metaobjectResponse = await admin.graphql(
-    `#graphql
-    mutation shopifyReactRouterTemplateUpsertMetaobject($handle: MetaobjectHandleInput!, $values: JSON!) {
-      metaobjectUpsert(handle: $handle, values: $values) {
-        metaobject {
-          id
-          handle
-          values
-        }
-        userErrors {
-          field
-          message
-        }
-      }
-    }`,
-    {
-      variables: {
-        handle: {
-          type: "$app:example",
-          handle: "demo-entry",
-        },
-        values: {
-          title: "Demo Entry",
-          description:
-            "This metaobject was created by the Shopify app template to demonstrate the metaobject API.",
-        },
-      },
-    },
-  );
-  const metaobjectResponseJson = await metaobjectResponse.json();
+export default function Dashboard() {
+  const { shop, campaigns, stats } = useLoaderData();
+  const { shop: layoutShop } = useOutletContext();
+  const currency = shop?.currency ?? layoutShop?.currency ?? "USD";
 
-  return {
-    product: responseJson.data.productCreate.product,
-    variant: variantResponseJson.data.productVariantsBulkUpdate.productVariants,
-    metaobject: metaobjectResponseJson.data.metaobjectUpsert.metaobject,
-  };
-};
-
-export default function Index() {
-  const fetcher = useFetcher();
-  const shopify = useAppBridge();
-  const isLoading =
-    ["loading", "submitting"].includes(fetcher.state) &&
-    fetcher.formMethod === "POST";
-
-  useEffect(() => {
-    if (fetcher.data?.product?.id) {
-      shopify.toast.show("Product created");
-    }
-  }, [fetcher.data?.product?.id, shopify]);
-  const generateProduct = () => fetcher.submit({}, { method: "POST" });
+  const activeRate =
+    stats.totalCampaigns > 0
+      ? Math.round((stats.active / stats.totalCampaigns) * 100)
+      : 0;
 
   return (
-    <s-page heading="Shopify app template">
-      <s-button slot="primary-action" onClick={generateProduct}>
-        Generate a product
-      </s-button>
+    <div className="dcm-page">
+      <div className="dcm-page-head">
+        <div>
+          <h1 className="dcm-title dcm-title--gradient">Dashboard</h1>
+          <p className="dcm-subtitle">
+            Real-time overview of your discount campaigns for {shop.domain}
+          </p>
+        </div>
+        <div className="dcm-head-actions">
+          <Link to="/app/campaigns">
+            <DCMButton variant="ghost" icon="list">
+              All campaigns
+            </DCMButton>
+          </Link>
+          <Link to="/app/campaigns/new">
+            <DCMButton variant="primary" icon="plus">
+              New campaign
+            </DCMButton>
+          </Link>
+        </div>
+      </div>
 
-      <s-section heading="Congrats on creating a new Shopify app 🎉">
-        <s-paragraph>
-          This embedded app template uses{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/tools/app-bridge"
-            target="_blank"
-          >
-            App Bridge
-          </s-link>{" "}
-          interface examples like an{" "}
-          <s-link href="/app/additional">additional page in the app nav</s-link>
-          , as well as an{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            Admin GraphQL
-          </s-link>{" "}
-          mutation demo, to provide a starting point for app development.
-        </s-paragraph>
-      </s-section>
-      <s-section heading="Get started with products">
-        <s-paragraph>
-          Generate a product with GraphQL and get the JSON output for that
-          product. Learn more about the{" "}
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql/latest/mutations/productCreate"
-            target="_blank"
-          >
-            productCreate
-          </s-link>{" "}
-          mutation in our API references. Includes a product{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/build/custom-data/metafields"
-            target="_blank"
-          >
-            metafield
-          </s-link>{" "}
-          and{" "}
-          <s-link
-            href="https://shopify.dev/docs/apps/build/custom-data/metaobjects"
-            target="_blank"
-          >
-            metaobject
-          </s-link>
-          .
-        </s-paragraph>
-        <s-stack direction="inline" gap="base">
-          <s-button
-            onClick={generateProduct}
-            {...(isLoading ? { loading: true } : {})}
-          >
-            Generate a product
-          </s-button>
-          {fetcher.data?.product && (
-            <s-button
-              onClick={() => {
-                shopify.intents.invoke?.("edit:shopify/Product", {
-                  value: fetcher.data?.product?.id,
-                });
-              }}
-              target="_blank"
-              variant="tertiary"
-            >
-              Edit product
-            </s-button>
+      <div className="dcm-hero">
+        <div className="dcm-hero-grid" />
+        <div className="dcm-hero-inner">
+          <div>
+            <div className="dcm-hero-eyebrow">
+              <span className="dcm-live-dot" />
+              Campaign engine online
+            </div>
+            <h2>
+              {stats.active > 0
+                ? `${stats.active} campaign${stats.active === 1 ? "" : "s"} live right now`
+                : stats.totalCampaigns > 0
+                  ? "Let's go live"
+                  : "Launch your first campaign"}
+            </h2>
+            <p>
+              {stats.active > 0
+                ? "Your active discounts are driving revenue at checkout. Track usage, orders and performance from here."
+                : "Design, schedule and publish discount campaigns that convert. Start with a percentage or fixed-amount deal."}
+            </p>
+            <div className="dcm-actions" style={{ marginTop: 20 }}>
+              <Link to="/app/campaigns/new">
+                <DCMButton variant="primary" size="lg" icon="sparkles">
+                  Create campaign
+                </DCMButton>
+              </Link>
+            </div>
+          </div>
+          <div className="dcm-hero-stats">
+            <div className="dcm-hero-stat">
+              <b>{formatNumber(stats.active)}</b>
+              <span>Active</span>
+            </div>
+            <div className="dcm-hero-stat">
+              <b>{formatNumber(stats.scheduled)}</b>
+              <span>Scheduled</span>
+            </div>
+            <div className="dcm-hero-stat">
+              <b>{formatNumber(stats.totalUses)}</b>
+              <span>Uses</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="dcm-grid dcm-grid--stats dcm-stagger">
+        <StatCard
+          label="Revenue generated"
+          value={formatCurrency(stats.revenue, currency)}
+          icon="coin"
+          tone="emerald"
+          detail={`${formatNumber(stats.orderCount)} orders tracked`}
+        />
+        <StatCard
+          label="Total coupon uses"
+          value={formatNumber(stats.totalUses)}
+          icon="zap"
+          tone="indigo"
+          detail={`${activeRate}% of campaigns live`}
+        />
+        <StatCard
+          label="Average order value"
+          value={formatCurrency(stats.averageOrderValue, currency)}
+          icon="chart"
+          tone="pink"
+          detail="Per campaign order"
+        />
+        <StatCard
+          label="Total campaigns"
+          value={formatNumber(stats.totalCampaigns)}
+          icon="megaphone"
+          tone="sky"
+          detail={`${formatNumber(stats.byStatus.DRAFT)} drafts ready`}
+        />
+      </div>
+
+      <div className="dcm-grid dcm-grid--2 dcm-stagger">
+        <div className="dcm-card">
+          <div className="dcm-card-head">
+            <h3 className="dcm-card-title">
+              <span className="dcm-card-chip">
+                <Icon name="chart" />
+              </span>
+              Campaign status
+            </h3>
+          </div>
+          <div className="dcm-chip-row">
+            <span className="dcm-chip active">
+              Active · {stats.active}
+            </span>
+            <span className="dcm-chip">Scheduled · {stats.scheduled}</span>
+            <span className="dcm-chip">Draft · {stats.byStatus.DRAFT}</span>
+            <span className="dcm-chip">Expired · {stats.byStatus.EXPIRED}</span>
+            <span className="dcm-chip">Cancelled · {stats.byStatus.CANCELLED}</span>
+          </div>
+
+          {stats.topCampaign && (
+            <>
+              <hr className="dcm-divider" />
+              <div className="dcm-card-title" style={{ marginBottom: 10 }}>
+                <span className="dcm-card-chip">
+                  <Icon name="trendingUp" />
+                </span>
+                <span>Top performer</span>
+              </div>
+              <div className="dcm-inline">
+                <StatusBadge status={stats.topCampaign.status} />
+                <span style={{ fontWeight: 700 }}>{stats.topCampaign.name}</span>
+              </div>
+              <p className="dcm-note" style={{ marginTop: 8 }}>
+                {formatNumber(stats.topCampaign.totalUses)} uses ·{" "}
+                {CAMPAIGN_TYPES[stats.topCampaign.type]?.label ??
+                  stats.topCampaign.type}
+              </p>
+            </>
           )}
-        </s-stack>
-        {fetcher.data?.product && (
-          <s-section heading="productCreate mutation">
-            <s-stack direction="block" gap="base">
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <code>{JSON.stringify(fetcher.data.product, null, 2)}</code>
-                </pre>
-              </s-box>
+        </div>
 
-              <s-heading>productVariantsBulkUpdate mutation</s-heading>
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <code>{JSON.stringify(fetcher.data.variant, null, 2)}</code>
-                </pre>
-              </s-box>
+        <div className="dcm-card dcm-card--hover">
+          <div className="dcm-card-head">
+            <h3 className="dcm-card-title">
+              <span className="dcm-card-chip">
+                <Icon name="calendar" />
+              </span>
+              Next up
+            </h3>
+            <Link to="/app/campaigns" className="dcm-meta">
+              View all
+            </Link>
+          </div>
+          {stats.scheduled === 0 ? (
+            <p className="dcm-note">
+              No scheduled campaigns. Schedule a campaign to auto-activate on
+              its start date.
+            </p>
+          ) : (
+            <div className="dcm-stack">
+              {campaigns
+                .filter((c) => c.status === "SCHEDULED")
+                .slice(0, 3)
+                .map((c) => (
+                  <Link
+                    key={c.id}
+                    to={`/app/campaigns/${c.id}`}
+                    style={{ color: "inherit" }}
+                  >
+                    <div className="dcm-inline" style={{ justifyContent: "space-between" }}>
+                      <span style={{ fontWeight: 600 }}>{c.name}</span>
+                      <span className="dcm-cell-mono" style={{ color: "var(--dcm-indigo)" }}>
+                        {c.couponCode}
+                      </span>
+                    </div>
+                    <p className="dcm-note" style={{ margin: "4px 0 0" }}>
+                      Starts {formatDate(c.startDate, { withTime: true })}
+                    </p>
+                  </Link>
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
 
-              <s-heading>metaobjectUpsert mutation</s-heading>
-              <s-box
-                padding="base"
-                borderWidth="base"
-                borderRadius="base"
-                background="subdued"
-              >
-                <pre
-                  style={{
-                    margin: 0,
-                    whiteSpace: "pre-wrap",
-                    wordBreak: "break-word",
-                  }}
-                >
-                  <code>
-                    {JSON.stringify(fetcher.data.metaobject, null, 2)}
-                  </code>
-                </pre>
-              </s-box>
-            </s-stack>
-          </s-section>
+      <div className="dcm-card" style={{ marginTop: 20 }}>
+        <div className="dcm-card-head">
+          <h3 className="dcm-card-title">
+            <span className="dcm-card-chip">
+              <Icon name="megaphone" />
+            </span>
+            Recent campaigns
+          </h3>
+          <Link to="/app/campaigns" className="dcm-meta">
+            View all →
+          </Link>
+        </div>
+
+        {campaigns.length === 0 ? (
+          <div className="dcm-empty">
+            <div className="dcm-empty-icon">
+              <Icon name="sparkles" />
+            </div>
+            <h3>No campaigns yet</h3>
+            <p>
+              Create your first campaign to generate a discount code your
+              customers can redeem at checkout.
+            </p>
+            <Link to="/app/campaigns/new">
+              <DCMButton variant="primary" icon="plus">
+                Create your first campaign
+              </DCMButton>
+            </Link>
+          </div>
+        ) : (
+          <div className="dcm-table-wrap">
+            <table className="dcm-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Uses</th>
+                  <th>Starts</th>
+                  <th>Ends</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.slice(0, 5).map((campaign) => (
+                  <tr key={campaign.id}>
+                    <td>
+                      <Link
+                        to={`/app/campaigns/${campaign.id}`}
+                        className="dcm-cell-link"
+                      >
+                        {campaign.name}
+                      </Link>
+                    </td>
+                    <td className="dcm-cell-soft">
+                      {CAMPAIGN_TYPES[campaign.type]?.label ?? campaign.type}
+                    </td>
+                    <td>
+                      <StatusBadge status={campaign.status} />
+                    </td>
+                    <td>{formatNumber(campaign.totalUses)}</td>
+                    <td className="dcm-cell-soft">{formatDate(campaign.startDate)}</td>
+                    <td className="dcm-cell-soft">{formatDate(campaign.endDate)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </s-section>
-
-      <s-section slot="aside" heading="App template specs">
-        <s-paragraph>
-          <s-text>Framework: </s-text>
-          <s-link href="https://reactrouter.com/" target="_blank">
-            React Router
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Interface: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/app-home/using-polaris-components"
-            target="_blank"
-          >
-            Polaris web components
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>API: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/api/admin-graphql"
-            target="_blank"
-          >
-            GraphQL
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Custom data: </s-text>
-          <s-link
-            href="https://shopify.dev/docs/apps/build/custom-data"
-            target="_blank"
-          >
-            Metafields &amp; metaobjects
-          </s-link>
-        </s-paragraph>
-        <s-paragraph>
-          <s-text>Database: </s-text>
-          <s-link href="https://www.prisma.io/" target="_blank">
-            Prisma
-          </s-link>
-        </s-paragraph>
-      </s-section>
-
-      <s-section slot="aside" heading="Next steps">
-        <s-unordered-list>
-          <s-list-item>
-            Build an{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/getting-started/build-app-example"
-              target="_blank"
-            >
-              example app
-            </s-link>
-          </s-list-item>
-          <s-list-item>
-            Explore Shopify&apos;s API with{" "}
-            <s-link
-              href="https://shopify.dev/docs/apps/tools/graphiql-admin-api"
-              target="_blank"
-            >
-              GraphiQL
-            </s-link>
-          </s-list-item>
-        </s-unordered-list>
-      </s-section>
-    </s-page>
+      </div>
+    </div>
   );
 }
 

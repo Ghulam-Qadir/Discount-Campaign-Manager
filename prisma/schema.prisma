@@ -32,3 +32,94 @@ model Session {
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
+
+model Shop {
+  id                String     @id @default(cuid())
+  domain            String     @unique
+  timezone          String     @default("UTC")
+  currency          String     @default("USD")
+  emailNotifications Boolean   @default(true)
+  installedAt       DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  campaigns         Campaign[]
+}
+
+model Campaign {
+  id                  String            @id @default(cuid())
+  shopId              String
+  shop                Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name                String
+  type                CampaignType
+  value               Float
+  appliesTo           String            @default("entire_order")
+  customerEligibility String            @default("all")
+  customerTags        String?
+  usageLimit          Int?
+  totalUses           Int               @default(0)
+  startDate           DateTime?
+  endDate             DateTime?
+  status              CampaignStatus    @default(DRAFT)
+  couponCode          String?
+  discountId          String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  products            CampaignProduct[]
+  collections         CampaignCollection[]
+  orders              CampaignOrder[]
+  logs                CampaignLog[]
+}
+
+model CampaignProduct {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  productId  String
+  createdAt  DateTime @default(now())
+
+  @@unique([campaignId, productId])
+}
+
+model CampaignCollection {
+  id           String   @id @default(cuid())
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  collectionId String
+  createdAt    DateTime @default(now())
+
+  @@unique([campaignId, collectionId])
+}
+
+model CampaignLog {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  action     String
+  message    String?
+  createdAt  DateTime @default(now())
+}
+
+model CampaignOrder {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  orderId    String
+  totalPrice Float
+  createdAt  DateTime @default(now())
+
+  @@unique([campaignId, orderId])
+}
+
+enum CampaignType {
+  PERCENTAGE
+  FIXED_AMOUNT
+  FREE_SHIPPING
+  BOGO
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}

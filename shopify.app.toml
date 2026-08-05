@@ -1,13 +1,13 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "26cd5ed6b1c10a690912884e0d11538c"
-application_url = "https://example.com"
+application_url = "https://discount-campaign-manager.vercel.app"
 embedded = true
-name = "discount-campaign-manager"
+name = "Discount Campaign Manager"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "write_products,write_metaobjects,write_metaobject_definitions"
+scopes = "write_products,write_metaobjects,write_metaobject_definitions,write_discounts,read_discounts,read_orders"
 
 [product.metafields.app.demo_info]
 type = "single_line_text_field"
@@ -44,8 +44,16 @@ api_version = "2026-10"
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
 
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/orders/updated"
+  topics = [ "orders/updated" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/delete"
+  topics = [ "products/delete" ]
+
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://discount-campaign-manager.vercel.app/auth/callback" ]
 
 [build]
 include_config_on_deploy = true

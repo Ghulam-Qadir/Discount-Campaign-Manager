@@ -12,5 +12,11 @@ export const action = async ({ request }) => {
     await db.session.deleteMany({ where: { shop } });
   }
 
+  // Clean up shop-scoped data (campaigns, logs and orders cascade via FK).
+  const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+  if (shopRecord) {
+    await db.shop.delete({ where: { id: shopRecord.id } });
+  }
+
   return new Response();
 };
